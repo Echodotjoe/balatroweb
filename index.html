@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+
+  <!-- ── SEO ─────────────────────────────────────────────────── -->
+  <title>Balatro GBA – Play in Browser</title>
+  <meta name="description" content="Play the Balatro GBA fan demake directly in your browser. No download, no install – just click and play. Works on PC and mobile." />
+  <meta name="keywords" content="Balatro, GBA, Game Boy Advance, browser game, card game, roguelike, fan game, play online" />
+  <link rel="canonical" href="https://outblade.github.io/balatro-web/" />
+
+  <!-- ── Open Graph (Discord, Twitter, WhatsApp previews) ─────── -->
+  <meta property="og:type"        content="website" />
+  <meta property="og:url"         content="https://outblade.github.io/balatro-web/" />
+  <meta property="og:title"       content="Balatro GBA – Play in Browser" />
+  <meta property="og:description" content="Play the Balatro GBA fan demake in your browser. No download needed." />
+  <meta property="og:image"       content="https://outblade.github.io/balatro-web/social.png" />
+  <meta name="twitter:card"       content="summary_large_image" />
+  <meta name="twitter:title"      content="Balatro GBA – Play in Browser" />
+  <meta name="twitter:description" content="Play the Balatro GBA fan demake in your browser. No download needed." />
+  <meta name="twitter:image"      content="https://outblade.github.io/balatro-web/social.png" />
+
+  <!-- ── Emulator styles ──────────────────────────────────────── -->
+  <link rel="stylesheet" href="https://cdn.emulatorjs.org/4.2.3/data/emulator.min.css" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #000;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    /* ── Emulator fills viewport ────────────────────────────── */
+    #game { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+
+    #version-link {
+      position: fixed; top: 10px; left: 10px; z-index: 9999;
+      padding: 6px 9px; border-radius: 6px;
+      color: #e8a838; background: rgba(10,10,22,0.8);
+      font: 0.72rem 'Segoe UI', sans-serif; text-decoration: none;
+    }
+    #version-link:hover { text-decoration: underline; }
+
+    /* ── Fullscreen button (top-right) ──────────────────────── */
+    #btn-fs {
+      position: fixed; top: 10px; right: 10px; z-index: 9999;
+      background: rgba(10,10,22,0.7);
+      border: 1px solid rgba(232,168,56,0.4);
+      border-radius: 6px; padding: 5px 12px;
+      color: #e8a838; font: 700 0.72rem 'Segoe UI', sans-serif;
+      cursor: pointer; user-select: none; letter-spacing: 1px;
+      transition: background 0.15s, opacity 0.15s;
+      opacity: 0.6;
+    }
+    #btn-fs:hover { background: rgba(232,168,56,0.2); opacity: 1; }
+  </style>
+</head>
+<body>
+
+<div id="game"></div>
+<a id="version-link" href="https://github.com/OutBlade/balatro-web#controls" target="_blank" rel="noopener noreferrer">v0.2.2 · Controls &amp; saves</a>
+<button id="btn-fs" type="button" title="Fullscreen (F / F11)" aria-label="Toggle fullscreen">&#9974; FS</button>
+
+<!-- EmulatorJS (individual scripts to bypass min.js abort bug) -->
+<script src="https://cdn.emulatorjs.org/4.2.3/data/src/emulator.js"></script>
+<script src="https://cdn.emulatorjs.org/4.2.3/data/src/nipplejs.js"></script>
+<script src="https://cdn.emulatorjs.org/4.2.3/data/src/shaders.js"></script>
+<script src="https://cdn.emulatorjs.org/4.2.3/data/src/storage.js"></script>
+<script src="https://cdn.emulatorjs.org/4.2.3/data/src/gamepad.js"></script>
+<script src="https://cdn.emulatorjs.org/4.2.3/data/src/GameManager.js"></script>
+<script src="https://cdn.emulatorjs.org/4.2.3/data/src/socket.io.min.js"></script>
+<script src="https://cdn.emulatorjs.org/4.2.3/data/src/compression.js"></script>
+
+<script>
+// Let EmulatorJS preserve the full 3:2 game image, including after a resize.
+// Keep the old filename and save namespace available for existing v1.1 states.
+var legacyVersion = new URLSearchParams(window.location.search).get('version') === '1.1';
+var romVersion = legacyVersion ? '1.1' : '0.2.2';
+document.getElementById('version-link').textContent = 'v' + romVersion + ' · Controls & saves';
+
+// ── Fullscreen (F / F11 / button) ──────────────────────────────
+async function toggleFS() {
+  try {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+    } else if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    }
+  } catch (error) {
+    console.warn('Fullscreen could not be changed:', error);
+  }
+}
+document.getElementById('btn-fs').hidden = !document.fullscreenEnabled;
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'f' || e.key === 'F' || e.key === 'F11') {
+    e.preventDefault();
+    toggleFS();
+  }
+});
+document.getElementById('btn-fs').addEventListener('click', toggleFS);
+
+// ── Start emulator ──────────────────────────────────────────────
+window.EJS_emulator = new EmulatorJS('#game', {
+  gameUrl:     legacyVersion ? 'balatro-gba.gba' : 'balatro-gba-0.2.2.gba',
+  dataPath:    'https://cdn.emulatorjs.org/4.2.3/data/',
+  system:      'mgba',
+  color:       '#e8a838',
+  startOnLoad: true,
+  defaultControllers: {
+    0: {
+      0: { value: 'escape',      value2: 'BUTTON_2'            }, // B      = Esc
+      2: { value: 'shift',       value2: 'SELECT'              }, // Select = Shift
+      3: { value: 'tab',         value2: 'START'               }, // Start  = Tab
+      4: { value: 'up arrow',    value2: 'DPAD_UP'             },
+      5: { value: 'down arrow',  value2: 'DPAD_DOWN'           },
+      6: { value: 'left arrow',  value2: 'DPAD_LEFT'           },
+      7: { value: 'right arrow', value2: 'DPAD_RIGHT'          },
+      8: { value: 'space',      value2: 'BUTTON_1'            }, // A = Space
+      10: { value: 'enter',     value2: 'LEFT_TOP_SHOULDER'   }, // L = Enter (Play Hand)
+      11: { value: 'backspace', value2: 'RIGHT_TOP_SHOULDER'  }  // R = Backspace (Discard)
+    },
+    1: {}, 2: {}, 3: {}
+  }
+});
+
+</script>
+
+</body>
+</html>
